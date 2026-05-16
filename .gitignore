@@ -1,0 +1,28 @@
+# Python-generated files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Environment variables
+.env
+.env.local
+*.env
+
+# Database and Storage
+chunks.db
+temp_uploads/
+*.sqlite3
+
+# IDEs and OS
+.vscode/
+.idea/
+.DS_Store
+
+# Deployment logs
+*.log
