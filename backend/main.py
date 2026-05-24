@@ -59,13 +59,15 @@ app = FastAPI(
 raw_origins = os.environ.get("CORS_ORIGINS", "*")
 if raw_origins == "*":
     allowed_origins = ["*"]
+    allow_credentials = False  # Wildcard '*' cannot be used with allow_credentials=True in strict browsers
 else:
     allowed_origins = [o.strip() for o in raw_origins.split(",") if o.strip()]
+    allow_credentials = True
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=True,
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
