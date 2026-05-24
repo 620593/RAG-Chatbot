@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Request
-from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.responses import RedirectResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -146,17 +146,26 @@ async def startup_event():
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
-@app.get("/", include_in_schema=False)
-def root():
+@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+def root(request: Request):
+    """
+    Handles both GET (browser redirect to /docs) and HEAD (Render health-check probes).
+    Render's load balancer sends HEAD / to verify the port is alive.
+    """
+    if request.method == "HEAD":
+        return Response(status_code=200)
     return RedirectResponse(url="/docs")
 
 
-@app.get("/health", tags=["System"])
-def health_check():
+@app.api_route("/health", methods=["GET", "HEAD"], tags=["System"])
+def health_check(request: Request):
     """
     Lightweight health probe for monitoring and Render cold-start warm-up.
+    Accepts HEAD for UptimeRobot / Render health-check pings.
     Always returns 200 so the frontend can rely on it for connectivity checks.
     """
+    if request.method == "HEAD":
+        return Response(status_code=200)
     return {
         "status": "healthy",
         "service": "Enterprise RAG API",

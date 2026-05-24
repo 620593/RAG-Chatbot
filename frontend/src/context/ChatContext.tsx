@@ -49,7 +49,13 @@ type ChatContextType = {
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://rag-chatbot-api.onrender.com";
+// In production on Vercel: use relative URL so Vercel's proxy rewrites handle CORS transparently.
+// In local dev: use localhost backend directly.
+// Explicit NEXT_PUBLIC_API_URL override always wins (e.g., a custom domain).
+const isVercel = typeof window !== "undefined" && window.location.hostname.includes("vercel.app");
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (isVercel ? "" : "http://localhost:8000");
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [activeTab, setActiveTab] = useState<"chat" | "knowledge" | "prompts" | "integrations">("chat");
@@ -105,16 +111,19 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       setDocuments(JSON.parse(savedDocs));
     }
 
-    // Ping backend to wake it up and set ready state
+    // Ping backend health endpoint to wake it up and set ready state
     const pingBackend = async () => {
       try {
-        const res = await fetch(`${API_URL.replace(/\/$/, "")}/`);
-        if (res.ok || res.status === 404 || res.status === 307 || res.status === 302) {
+        // Use /health — proxied by Vercel to the Render backend
+        const res = await fetch(`${API_URL}/health`);
+        if (res.ok) {
+          setIsBackendReady(true);
+        } else {
+          // Still mark ready so UI isn't stuck; errors will show on actual requests
           setIsBackendReady(true);
         }
       } catch (e) {
-        console.error("Backend not reachable, but setting ready for offline mock capability:", e);
-        // We set ready anyway so client is not permanently locked in shimmer
+        console.error("Backend not reachable:", e);
         setIsBackendReady(true);
       }
     };
@@ -200,7 +209,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     formData.append("file", file);
 
     try {
-      const res = await fetch(`${API_URL.replace(/\/$/, "")}/upload`, {
+      const res = await fetch(`${API_URL}/upload`, {
         method: "POST",
         body: formData,
       });
@@ -271,7 +280,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true);
 
     try {
-      const res = await fetch(`${API_URL.replace(/\/$/, "")}/chat`, {
+      const res = await fetch(`${API_URL}/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
