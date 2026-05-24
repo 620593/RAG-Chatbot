@@ -1,39 +1,76 @@
+"""
+Query Rewriter Node
+=====================
+Rewrites the user's raw question into an optimised retrieval query.
+
+Motivation: User questions are often conversational and imprecise.
+The vector store responds best to keyword-rich, specific queries.
+This node transforms the raw question into a better search query
+without changing its semantic intent.
+"""
+
+import logging
 from langchain_core.prompts import PromptTemplate
-from langchain_groq import ChatGroq
 from langchain_core.output_parsers import StrOutputParser
+from langchain_groq import ChatGroq
 from backend.config import settings
 from backend.graph.state import GraphState
 
-_llm = None
+logger = logging.getLogger(__name__)
 
-def get_llm() -> ChatGroq:
-    """Returns the rewriter LLM, initializing lazily."""
-    global _llm
-    if _llm is None:
-        _llm = ChatGroq(model=settings.groq_model_name, api_key=settings.groq_api_key, temperature=0)
-    return _llm
+_llm: ChatGroq | None = None
 
-prompt = PromptTemplate(
-    template="""You are a search query optimizer for a document retrieval system.
-Your job is to rewrite the user's question into a clear, keyword-rich search query
-that will retrieve the most relevant chunks from a vector store.
+_REWRITE_PROMPT = PromptTemplate(
+    template="""You are a precision search query optimizer for a document retrieval system.
+Rewrite the user's question into an optimal keyword-rich search query that will retrieve the most relevant chunks from a vector store.
 
 Rules:
-- If the question is broad (e.g., "what is this about?", "summarize this"), output keywords like "introduction overview summary main topic"
-- If the question is specific, extract the key entities and concepts
-- Output ONLY the rewritten query. No explanation, no punctuation.
+- Extract all key entities, concepts, proper nouns, and technical terms.
+- For broad questions (e.g., "what is this about?", "summarize"), output descriptive keywords like "introduction overview summary main topic purpose".
+- For specific questions, focus on the core technical or factual keywords.
+- Output ONLY the rewritten query — no explanation, no punctuation, no quotes.
+- Keep the query concise (under 15 words).
 
 Original Question: {question}
-Rewritten Search Query:""",
+Optimized Search Query:""",
     input_variables=["question"],
 )
 
-def rewrite_query(state: GraphState):
-    """Rewrites the user's question into a better retrieval query."""
-    print("---REWRITE QUERY---")
+
+def _get_llm() -> ChatGroq:
+    global _llm
+    if _llm is None:
+        _llm = ChatGroq(
+            model=settings.groq_model_name,
+            api_key=settings.groq_api_key,
+            temperature=0,
+        )
+    return _llm
+
+
+def rewrite_query(state: GraphState) -> dict:
+    """
+    Rewrites the user's question into a retrieval-optimised search query.
+
+    Falls back to the original question if the LLM call fails so the
+    pipeline can continue even with Groq API issues.
+    """
+    logger.info("--- NODE: REWRITE QUERY ---")
     question = state["question"]
-    llm = get_llm()
-    chain = prompt | llm | StrOutputParser()
-    rewritten = chain.invoke({"question": question})
-    print(f"---REWRITTEN QUERY: {rewritten}---")
-    return {"question": rewritten}
+
+    try:
+        llm = _get_llm()
+        chain = _REWRITE_PROMPT | llm | StrOutputParser()
+        rewritten = chain.invoke({"question": question}).strip()
+
+        if rewritten:
+            logger.info(f"  Original:  '{question}'")
+            logger.info(f"  Rewritten: '{rewritten}'")
+            return {"question": rewritten}
+        else:
+            logger.warning("Query rewriter returned empty string — using original question.")
+            return {"question": question}
+
+    except Exception as e:
+        logger.warning(f"Query rewrite failed (using original): {e}")
+        return {"question": question}

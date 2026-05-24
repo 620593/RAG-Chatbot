@@ -4,11 +4,29 @@ services:
     runtime: docker
     plan: free
     envVars:
+      # --- Required: LLM (Groq) ---
       - key: GROQ_API_KEY
-        sync: false
+        sync: false        # Set manually in Render dashboard
+      # --- Required: Embeddings (HuggingFace) ---
       - key: HF_TOKEN
-        sync: false
+        sync: false        # HF token with Inference permissions
+      # --- Required: Vector Store (Qdrant Cloud) ---
       - key: QDRANT_URL
-        sync: false
+        sync: false        # e.g. https://xxxx.eu-west-2-0.aws.cloud.qdrant.io:6333
       - key: QDRANT_API_KEY
         sync: false
+      # --- Optional: CORS origins ---
+      # Set this to your frontend URL in production to restrict access.
+      # Example: https://your-frontend.vercel.app
+      # Leave as "*" (default) for development.
+      - key: CORS_ORIGINS
+        value: "*"
+      # --- Optional: Pipeline tuning ---
+      - key: CONTEXTUAL_CHUNKING_ENABLED
+        value: "true"
+      - key: CHUNK_SIZE
+        value: "1000"
+      - key: CHUNK_OVERLAP
+        value: "150"
+      - key: MAX_UPLOAD_SIZE_MB
+        value: "50"
