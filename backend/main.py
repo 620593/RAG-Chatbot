@@ -55,11 +55,13 @@ app = FastAPI(
 # ---------------------------------------------------------------------------
 # CORS — Critical: without this, browser upload requests are blocked
 # ---------------------------------------------------------------------------
-# Reads CORS_ORIGINS env var (comma-separated list). Defaults to "*" for dev.
+# Set CORS_ORIGINS env var on Render to your Vercel URL, e.g.:
+#   https://your-app.vercel.app,https://your-custom-domain.com
+# Leave as "*" only for local development.
 raw_origins = os.environ.get("CORS_ORIGINS", "*")
-if raw_origins == "*":
+if raw_origins.strip() == "*":
     allowed_origins = ["*"]
-    allow_credentials = False  # Wildcard '*' cannot be used with allow_credentials=True in strict browsers
+    allow_credentials = False  # Wildcard '*' cannot be used with allow_credentials=True
 else:
     allowed_origins = [o.strip() for o in raw_origins.split(",") if o.strip()]
     allow_credentials = True
@@ -68,8 +70,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=allow_credentials,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
     allow_headers=["*"],
+    expose_headers=["Content-Type", "X-Request-ID"],
 )
 
 # ---------------------------------------------------------------------------
@@ -149,12 +152,22 @@ async def startup_event():
 @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
 def root(request: Request):
     """
-    Handles both GET (browser redirect to /docs) and HEAD (Render health-check probes).
-    Render's load balancer sends HEAD / to verify the port is alive.
+    Root endpoint — returns a JSON API info response.
+    HEAD requests (used by Render load-balancer health probes) return 200 directly.
+    NOTE: We do NOT redirect to /docs here because Vercel proxies this route and
+    a redirect to /docs would escape the Vercel proxy, landing users on the Render
+    domain (the 'shimmer UI' bug). Use /docs and /redoc explicitly for Swagger.
     """
     if request.method == "HEAD":
         return Response(status_code=200)
-    return RedirectResponse(url="/docs")
+    return JSONResponse({
+        "service": "Enterprise RAG API",
+        "version": "2.0.0",
+        "status": "online",
+        "docs": "/docs",
+        "health": "/health",
+        "endpoints": ["/upload", "/chat", "/status", "/health"],
+    })
 
 
 @app.api_route("/health", methods=["GET", "HEAD"], tags=["System"])

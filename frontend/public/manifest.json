@@ -1,0 +1,20 @@
+{
+  "name": "Enterprise RAG AI",
+  "short_name": "RAG AI",
+  "description": "Advanced Commercial RAG Chatbot Platform — offline-capable",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B0B0E",
+  "theme_color": "#6B8CFF",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "utilities"],
+  "prefer_related_applications": false
+}

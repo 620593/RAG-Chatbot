@@ -34,6 +34,7 @@ export default function Home() {
     isUploading,
     isLoading,
     isBackendReady,
+    isOffline,
     prompt,
     setPrompt,
     uploadDocument,
@@ -281,9 +282,19 @@ export default function Home() {
         {/* Render Health State indicator */}
         <div className="flex items-center gap-2.5">
           <span className="flex items-center gap-1.5 text-xs text-gray-400 bg-[#16161F] border border-[#262635] px-3.5 py-1.5 rounded-full">
-            <span className={`w-2 h-2 rounded-full ${isBackendReady ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400 animate-pulse'}`} />
+            <span className={`w-2 h-2 rounded-full ${
+              isOffline 
+                ? 'bg-amber-400 animate-pulse' 
+                : isBackendReady 
+                  ? 'bg-emerald-500 animate-pulse' 
+                  : 'bg-yellow-400 animate-pulse'
+            }`} />
             <span className="font-medium tracking-wide">
-              {isBackendReady ? 'RAG Gateway Connected' : 'Connecting to Render...'}
+              {isOffline 
+                ? 'Offline — No Connection' 
+                : isBackendReady 
+                  ? 'RAG Gateway Connected' 
+                  : 'Waking Render Instance...'}
             </span>
           </span>
         </div>

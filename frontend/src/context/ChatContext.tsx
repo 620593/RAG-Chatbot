@@ -37,6 +37,7 @@ type ChatContextType = {
   isUploading: boolean;
   isLoading: boolean;
   isBackendReady: boolean;
+  isOffline: boolean;
   prompt: string;
   setPrompt: (prompt: string) => void;
   startNewChat: () => void;
@@ -49,13 +50,11 @@ type ChatContextType = {
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
-// In production on Vercel: use relative URL so Vercel's proxy rewrites handle CORS transparently.
-// In local dev: use localhost backend directly.
-// Explicit NEXT_PUBLIC_API_URL override always wins (e.g., a custom domain).
-const isVercel = typeof window !== "undefined" && window.location.hostname.includes("vercel.app");
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  (isVercel ? "" : "http://localhost:8000");
+// API URL: Always use relative URL "" so requests are same-origin.
+// In local dev: Next.js rewrites (next.config.ts) proxy them to localhost:8000.
+// In production: Vercel rewrites (vercel.json) proxy them to the Render backend.
+// This approach avoids CORS entirely on both environments.
+const API_URL = "";
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [activeTab, setActiveTab] = useState<"chat" | "knowledge" | "prompts" | "integrations">("chat");
@@ -66,6 +65,51 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isBackendReady, setIsBackendReady] = useState(false);
   const [prompt, setPrompt] = useState("");
+  const [isOffline, setIsOffline] = useState(false);
+
+  // Detect online/offline status
+  useEffect(() => {
+    const handleOffline = () => setIsOffline(true);
+    const handleOnline = () => {
+      setIsOffline(false);
+      // Re-ping backend when connection is restored
+      pingBackend();
+    };
+    window.addEventListener("offline", handleOffline);
+    window.addEventListener("online", handleOnline);
+    setIsOffline(!navigator.onLine);
+    return () => {
+      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("online", handleOnline);
+    };
+  }, []);
+
+  // Ping backend health endpoint with retries to handle Render cold-starts (can take 30-50s)
+  const pingBackend = async (attempt = 1): Promise<void> => {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000); // 12s timeout per attempt
+      const res = await fetch(`${API_URL}/health`, {
+        signal: controller.signal,
+        cache: "no-store",
+      });
+      clearTimeout(timeout);
+      if (res.ok) {
+        setIsBackendReady(true);
+      } else {
+        setIsBackendReady(true); // Still mark ready; actual errors appear on real requests
+      }
+    } catch (e) {
+      console.warn(`Backend ping attempt ${attempt} failed:`, e);
+      if (attempt < 6) {
+        // Retry with exponential backoff — handles Render cold-starts (30-50s)
+        setTimeout(() => pingBackend(attempt + 1), Math.min(attempt * 5000, 20000));
+      } else {
+        console.error("Backend unreachable after 6 attempts. Running in offline/degraded mode.");
+        setIsBackendReady(false);
+      }
+    }
+  };
 
   // Persist chat history and documents in localstorage for a commercial, robust feel
   useEffect(() => {
@@ -111,22 +155,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       setDocuments(JSON.parse(savedDocs));
     }
 
-    // Ping backend health endpoint to wake it up and set ready state
-    const pingBackend = async () => {
-      try {
-        // Use /health — proxied by Vercel to the Render backend
-        const res = await fetch(`${API_URL}/health`);
-        if (res.ok) {
-          setIsBackendReady(true);
-        } else {
-          // Still mark ready so UI isn't stuck; errors will show on actual requests
-          setIsBackendReady(true);
-        }
-      } catch (e) {
-        console.error("Backend not reachable:", e);
-        setIsBackendReady(true);
-      }
-    };
+    // Start backend health ping
     pingBackend();
   }, []);
 
@@ -203,6 +232,17 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     };
 
     setDocuments(prev => [newDoc, ...prev]);
+
+    // Offline guard — can't upload while disconnected
+    if (!navigator.onLine) {
+      setDocuments(prev => prev.map(d =>
+        d.id === docId
+          ? { ...d, status: "error", error: "Offline — cannot upload. Reconnect and try again." }
+          : d
+      ));
+      return;
+    }
+
     setIsUploading(true);
 
     const formData = new FormData();
@@ -227,12 +267,30 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+
   const deleteDocument = (id: string) => {
     setDocuments(prev => prev.filter(d => d.id !== id));
   };
 
   const sendQuery = async (text: string, fileToUpload?: File | null) => {
     if (!text.trim() && !fileToUpload) return;
+
+    // Offline guard
+    if (!navigator.onLine) {
+      const offlineMsg: Message = {
+        id: Date.now().toString(),
+        role: "ai",
+        content: "### ⚠️ You are offline\n\nYour device is not connected to the internet. Chat history and documents are available locally, but querying the AI requires an active connection.\n\n*Please reconnect and try again.*",
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      setChats(prev => prev.map(c => {
+        if (c.id === currentChatId) {
+          return { ...c, messages: [...c.messages, offlineMsg] };
+        }
+        return c;
+      }));
+      return;
+    }
     
     let targetChatId = currentChatId;
     if (!targetChatId) {
@@ -347,6 +405,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         isUploading,
         isLoading,
         isBackendReady,
+        isOffline,
         prompt,
         setPrompt,
         startNewChat,

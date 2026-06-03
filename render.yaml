@@ -16,11 +16,12 @@ services:
       - key: QDRANT_API_KEY
         sync: false
       # --- Optional: CORS origins ---
-      # Set this to your frontend URL in production to restrict access.
-      # Example: https://your-frontend.vercel.app
-      # Leave as "*" (default) for development.
+      # IMPORTANT: Replace the value below with your actual Vercel frontend URL!
+      # Example: https://your-app-name.vercel.app
+      # You can also add multiple origins: https://app.vercel.app,https://yourcustom.domain
+      # Using "*" is acceptable for testing but insecure for production.
       - key: CORS_ORIGINS
-        value: "*"
+        value: "https://rag-chatbot-api.onrender.com,https://rag-chatbot-api.vercel.app"
       # --- Optional: Pipeline tuning ---
       - key: CONTEXTUAL_CHUNKING_ENABLED
         value: "true"
